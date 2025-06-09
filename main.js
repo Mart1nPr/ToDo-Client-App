@@ -1,9 +1,6 @@
 const URL = "https://demo2.z-bit.ee"
 const TOKEN = "595l6dZUOHh2qqyKPZVpViLz11pabKWF"
 
-let taskList;
-let addTask;
-
 document.addEventListener("DOMContentLoaded", () => {
     taskList = document.querySelector("#task-list");
     addTask = document.querySelector("#add-task");
