@@ -1,108 +1,173 @@
-const tasks = [
-    {
-        id: 1,
-        name: 'Task 1',
-        completed: false
-    },
-    {
-        id: 2,
-        name: 'Task 2',
-        completed: true
-    }
-];
-let lastTaskId = 2;
+const URL = "https://demo2.z-bit.ee"
+const TOKEN = "595l6dZUOHh2qqyKPZVpViLz11pabKWF"
 
 let taskList;
 let addTask;
 
-// kui leht on brauseris laetud siis lisame esimesed taskid lehele
-window.addEventListener('load', () => {
-    taskList = document.querySelector('#task-list');
-    addTask = document.querySelector('#add-task');
+document.addEventListener("DOMContentLoaded", () => {
+    taskList = document.querySelector("#task-list");
+    addTask = document.querySelector("#add-task");
 
-    tasks.forEach(renderTask);
+    readTasks();
 
-    // kui nuppu vajutatakse siis lisatakse uus task
-    addTask.addEventListener('click', () => {
-        const task = createTask(); // Teeme kõigepealt lokaalsesse "andmebaasi" uue taski
-        const taskRow = createTaskRow(task); // Teeme uue taski HTML elementi mille saaks lehe peale listi lisada
-        taskList.appendChild(taskRow); // Lisame taski lehele
+    addTask.addEventListener("click", async () => {
+        try {
+            const task = await createTask();
+            const taskRow = createTaskRow({
+                id: task.id,
+                name: task.title,
+                completed: task.marked_as_done ?? false,
+            });
+            taskList.appendChild(taskRow);
+        } catch (error) {
+            console.error("Error creating task:", error);
+            alert("Failed to create task");
+        }
     });
 });
 
-function renderTask(task) {
-    const taskRow = createTaskRow(task);
-    taskList.appendChild(taskRow);
+async function createTask() {
+    const res = await fetch(`${URL}/tasks`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${TOKEN}`,
+        },
+        body: JSON.stringify({
+            title: "Task",
+            desc: "Description",
+        }),
+    });
+    if (!res.ok) throw new Error("Failed to create task");
+    const data = await res.json();
+    console.log("Task created:", data);
+    return data;
 }
 
-function createTask() {
-    lastTaskId++;
-    const task = {
-        id: lastTaskId,
-        name: 'Task ' + lastTaskId,
-        completed: false
-    };
-    tasks.push(task);
-    return task;
+async function readTasks() {
+    try {
+        const response = await fetch(`${URL}/tasks`, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${TOKEN}`,
+            },
+        });
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        const data = await response.json();
+        console.log("Tasks read:", data);
+
+        while (taskList.firstChild) {
+            taskList.removeChild(taskList.firstChild);
+        }
+
+        data.forEach((task) => {
+            const taskRow = createTaskRow({
+                id: task.id,
+                name: task.title,
+                completed: task.marked_as_done ?? false,
+            });
+            taskList.appendChild(taskRow);
+        });
+    } catch (error) {
+        console.error("Error reading tasks:", error);
+        alert("Failed to load tasks");
+    }
+}
+
+async function updateTask(taskId, updatedTask) {
+    try {
+        const response = await fetch(`${URL}/tasks/${taskId}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${TOKEN}`,
+            },
+            body: JSON.stringify(updatedTask),
+        });
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        const data = await response.json();
+        console.log("Task updated:", data);
+    } catch (error) {
+        console.error("Error updating task:", error);
+        alert("Failed to update tasks");
+    }
+}
+
+async function deleteTask(taskId, taskRow) {
+    try {
+        const response = await fetch(`${URL}/tasks/${taskId}`, {
+            method: "DELETE",
+            headers: {
+                Authorization: `Bearer ${TOKEN}`,
+            },
+        });
+        if (!response.ok) throw new Error("Failed to delete task");
+        console.log("Task deleted");
+        taskList.removeChild(taskRow);
+    } catch (error) {
+        console.error("Error deleting task:", error);
+        alert("Failed to delete tasks");
+    }
+}
+
+function updateAntCheckboxVisual(input) {
+	const checkbox = input.closest(".ant-checkbox");
+	if (!checkbox) return;
+	if (input.checked) {
+		checkbox.classList.add("ant-checkbox-checked");
+	} else {
+		checkbox.classList.remove("ant-checkbox-checked");
+	}
 }
 
 function createTaskRow(task) {
-    let taskRow = document.querySelector('[data-template="task-row"]').cloneNode(true);
-    taskRow.removeAttribute('data-template');
+    const template = document.querySelector('[data-template="task-row"]');
+    const taskRow = template.cloneNode(true);
+    taskRow.removeAttribute("data-template");
 
-    // Täidame vormi väljad andmetega
-    const name = taskRow.querySelector("[name='name']");
-    name.value = task.name;
+    const nameInput = taskRow.querySelector("[name='name']");
+    nameInput.value = task.name;
+
+    nameInput.addEventListener("blur", async () => {
+        const newTitle = nameInput.value.trim();
+        if (newTitle === task.name) return;
+
+        try {
+            await updateTask(task.id, { title: newTitle });
+            task.name = newTitle;
+        } catch {
+            alert("Failed to update task title");
+        }
+    });
 
     const checkbox = taskRow.querySelector("[name='completed']");
     checkbox.checked = task.completed;
+    updateAntCheckboxVisual(checkbox);
 
-    const deleteButton = taskRow.querySelector('.delete-task');
-    deleteButton.addEventListener('click', () => {
-        taskList.removeChild(taskRow);
-        tasks.splice(tasks.indexOf(task), 1);
+    checkbox.addEventListener("change", async () => {
+        checkbox.disabled = true;
+        try {
+            await updateTask(task.id, { marked_as_done: checkbox.checked });
+            task.completed = checkbox.checked;
+            updateAntCheckboxVisual(checkbox);
+        } catch {
+            alert("Failed to update task status");
+            checkbox.checked = task.completed;
+            updateAntCheckboxVisual(checkbox);
+        } finally {
+            checkbox.disabled = false;
+        }
     });
 
-    // Valmistame checkboxi ette vajutamiseks
-    hydrateAntCheckboxes(taskRow);
+
+    const deleteButton = taskRow.querySelector(".delete-task");
+    deleteButton.addEventListener("click", () => {
+        deleteTask(task.id, taskRow);
+    });
 
     return taskRow;
-}
-
-
-function createAntCheckbox() {
-    const checkbox = document.querySelector('[data-template="ant-checkbox"]').cloneNode(true);
-    checkbox.removeAttribute('data-template');
-    hydrateAntCheckboxes(checkbox);
-    return checkbox;
-}
-
-/**
- * See funktsioon aitab lisada eridisainiga checkboxile vajalikud event listenerid
- * @param {HTMLElement} element Checkboxi wrapper element või konteiner element mis sisaldab mitut checkboxi
- */
-function hydrateAntCheckboxes(element) {
-    const elements = element.querySelectorAll('.ant-checkbox-wrapper');
-    for (let i = 0; i < elements.length; i++) {
-        let wrapper = elements[i];
-
-        // Kui element on juba töödeldud siis jäta vahele
-        if (wrapper.__hydrated)
-            continue;
-        wrapper.__hydrated = true;
-
-
-        const checkbox = wrapper.querySelector('.ant-checkbox');
-
-        // Kontrollime kas checkbox peaks juba olema checked, see on ainult erikujundusega checkboxi jaoks
-        const input = wrapper.querySelector('.ant-checkbox-input');
-        if (input.checked) {
-            checkbox.classList.add('ant-checkbox-checked');
-        }
-        
-        // Kui inputi peale vajutatakse siis uuendatakse checkboxi kujundust
-        input.addEventListener('change', () => {
-            checkbox.classList.toggle('ant-checkbox-checked');
-        });
-    }
 }
